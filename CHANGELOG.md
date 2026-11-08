@@ -1,5 +1,16 @@
 # DSH 更新日志
 
+## 1.2.4（2026-11-08）
+
+- 应用内注入的弹层样式整段删除：弹层实色改由 dsh 自己的主题文件
+  （`dsh-client-ui-theme/lib/client.js`）负责，Safari 和 app 内一起生效。
+  注入脚本只剩垫片、键盘、日志。
+- 该主题文件已打补丁（备份 `client.js.bak-20261108-224511`）：
+  `--dsw-menu-surface-fill` 改为 `#fcfdfe` / `#303136`（原为 70%/64% 半透明），
+  `--dsw-menu-backdrop-filter` 改为 `none`，并给菜单/对话框/滚动容器加
+  `overscroll-behavior: contain`（修「滑模式选择器时页面跟着滚」）。
+- 重启 dsh 后生效；页面需要重新加载一次。
+
 ## 1.2.3（2026-11-08）
 
 - 新增 `bc.8848.dshcontrol.installer` 守护进程（以 root 运行，`WatchPaths` 盯
