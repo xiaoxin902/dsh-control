@@ -89,3 +89,8 @@ Apelin 安装的 clang 工具链、iPhoneOS 17.2 SDK、substrate 头文件与链
 把 `.deb` 交给用户，由其包管理器安装。`TMPDIR` 指向不可写目录，打包与 `mktemp`
 都要显式给 `/tmp` 或 `$HOME/.cache`。
 
+用户让你"写个插件"时，按 `~/.dsh/docs/tweak-workflow.md` 的流程做：先问清功能边界、
+包名（默认 `bc.8848.<英文名>`）、作者（默认 8848）、装不装，然后建
+`Sources/Tweak.m` 用 substrate C API 写钩子，跑
+`/var/mobile/.dsh/bin/ios-tweak-build.sh` 编译打包，把 `.deb` 交给用户去装。
+
