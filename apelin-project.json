@@ -152,14 +152,15 @@
   "package": {
     "id": "bc.8848.dshcontrol",
     "name": "DSH",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "控制本机 DeepSeek Harness（dsh）Web 服务：开机自启开关、运行状态、一键启动/停止与全屏打开",
     "longDescription": [
       "控制这台设备上已经装好的 DeepSeek Harness（dsh）。",
       "· 开机自启开关：创建/删除 /var/mobile/Documents/dsh/autostart.off",
       "· 服务状态：探测 127.0.0.1:3080，显示运行中/未运行与 PID",
       "· 打开：从 /tmp/dsh-web.log 取最新 token 链接，全屏 WKWebView 打开，并为旧系统注入 JS 垫片",
-      "· 启动/停止：由包内的隐藏辅助应用执行（主应用需沙盒才能用 WKWebView）",
+      "· 启动/停止：由包内的 launchd 守护进程执行，不跳转界面",
+      "· 打开前若日志里没有 token，会先请求一次服务端让它打印地址",
       "诊断日志：/tmp/dsh-control.log"
     ],
     "icon": "https://owngoal-dev.github.io/Apelin/icons/wiki.qaq.apelin.dev.app.png",

@@ -167,6 +167,34 @@ static BOOL DSHConnectSucceeds(uint16_t port, NSTimeInterval timeout) {
     return [text substringWithRange:last.range];
 }
 
++ (void)requestFrontPage {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return;
+    }
+    struct timeval timeout;
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(DSHWebPort);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+        const char *request = "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+        if (write(fd, request, strlen(request)) > 0) {
+            char buffer[256];
+            (void)read(fd, buffer, sizeof(buffer));
+        }
+        DSHLog(@"token: poked the web server so it prints its address");
+    }
+    close(fd);
+}
+
 + (NSInteger)currentPID {
     NSString *text = [NSString stringWithContentsOfFile:DSHPathForFileName(DSHPIDFileName)
                                                encoding:NSUTF8StringEncoding

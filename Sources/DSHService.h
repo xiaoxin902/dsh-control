@@ -34,6 +34,11 @@ FOUNDATION_EXPORT void DSHLog(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 /// The newest http://127.0.0.1:3080/?token=… in the log, or nil.
 + (nullable NSString *)currentTokenURL;
 
+/// Makes one HTTP request to the web server: it only prints its token URL
+/// into the log after the first HTTP connection, so a bare TCP probe leaves
+/// the log without one.
++ (void)requestFrontPage;
+
 /// The pid dsh-web.pid names, 0 when the file is missing or unreadable.
 + (NSInteger)currentPID;
 

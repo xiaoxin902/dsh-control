@@ -357,6 +357,10 @@
         // few seconds instead of failing on the first tap.
         NSString *urlString = [DSHService currentTokenURL];
         BOOL serviceUp = [DSHService isRunning];
+        if (urlString.length == 0 && serviceUp) {
+            [DSHService requestFrontPage];
+            urlString = [DSHService currentTokenURL];
+        }
         for (int i = 0; i < 30 && urlString.length == 0 && serviceUp; i++) {
             usleep(500 * 1000);
             urlString = [DSHService currentTokenURL];
