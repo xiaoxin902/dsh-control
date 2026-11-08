@@ -63,6 +63,8 @@ static NSString *const DSHShimSource =
 @property (nonatomic, strong) NSURL *url;
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
+@property (nonatomic, assign) NSTimeInterval quietUntil;
+@property (nonatomic, strong) NSTimer *overlayTimer;
 @end
 
 /// Forwards what the page logs, and every fetch it makes, into the app's log.
@@ -74,6 +76,11 @@ static NSString *const DSHShimSource =
 - (void)userContentController:(WKUserContentController *)userContentController
       didReceiveScriptMessage:(WKScriptMessage *)message {
     NSString *text = [message.body isKindOfClass:NSString.class] ? message.body : [message.body description];
+    if ([text hasPrefix:@"quiet.arm"]) {
+        DSHLog(@"page: quiet.arm (stop tapped)");
+        [NSNotificationCenter.defaultCenter postNotificationName:@"DSHPageQuietArmedNotification" object:nil];
+        return;
+    }
     DSHLog(@"page: %@", text);
 }
 
@@ -150,28 +157,42 @@ static NSString *const DSHPageProbeSource =
      "  let quietUntil = 0;"
      "  let gestureTarget = null;"
      "  let gestureAt = 0;"
-     "  const markGesture = (event) => { gestureTarget = event.target; gestureAt = Date.now(); };"
+     "  const isControl = (element) => {"
+     "    try { return !!(element && element.closest && element.closest('button,[role=\"button\"],[role=\"menuitem\"],[role=\"tab\"],a')); }"
+     "    catch (error) { return false; }"
+     "  };"
+     "  const markGesture = (event) => {"
+     "    gestureTarget = event.target;"
+     "    gestureAt = Date.now();"
+     // 点按钮（+、···、回退、停止）后页面常顺手聚焦输入框；给一个 1.2 秒的短窗口
+     "    if (isControl(event.target)) quietUntil = Math.max(quietUntil, Date.now() + 1200);"
+     "  };"
      "  ['pointerdown', 'touchstart', 'mousedown', 'keyup'].forEach((type) => {"
      "    document.addEventListener(type, markGesture, true);"
      "  });"
      "  const quiet = () => Date.now() < quietUntil;"
      "  const intended = (element) => {"
      "    if (!gestureTarget || !element || Date.now() - gestureAt > 1500) return false;"
+     "    if (isControl(gestureTarget) && !isControl(element)) return false;"
      "    if (gestureTarget === element) return true;"
      "    try { return typeof gestureTarget.contains === 'function' && gestureTarget.contains(element); } catch (error) { return false; }"
      "  };"
      "  const nativeFocus = HTMLElement.prototype.focus;"
      "  HTMLElement.prototype.focus = function (options) {"
-     "    if (quiet() && !intended(this)) return;"
+     "    if (quiet() && !intended(this)) {"
+     "      send('focus.blocked', [(this.tagName || '').toLowerCase(), String(this.className || '').slice(0, 60)]);"
+     "      return;"
+     "    }"
      "    return nativeFocus.call(this, options);"
      "  };"
      "  document.addEventListener('focusin', (event) => {"
      "    if (!quiet() || intended(event.target)) return;"
      "    const target = event.target;"
+     "    send('focus.reverted', [(target.tagName || '').toLowerCase(), String(target.className || '').slice(0, 60)]);"
      "    try { if (target && typeof target.blur === 'function') target.blur(); } catch (error) {}"
      "  }, true);"
      "  let quietRequests = 0;"
-     "  const armQuiet = () => { quietUntil = Date.now() + 3000; quietRequests += 1; };"
+     "  const armQuiet = () => { quietUntil = Date.now() + 3000; quietRequests += 1; send('quiet.arm', []); };"
      "  const originalFetchForCancel = window.fetch;"
      "  window.fetch = function (input, init) {"
      "    const url = typeof input === 'string' ? input : (input && input.url) || '';"
@@ -182,6 +203,24 @@ static NSString *const DSHPageProbeSource =
      "    return result;"
      "  };"
      "  window.addEventListener('dsh:quiet-stats', () => send('quiet', [quietRequests, Date.now() < quietUntil]));"
+     "  window.addEventListener('dsh:probe-overlays', () => {"
+     "    const found = [];"
+     "    for (const node of document.querySelectorAll('body *')) {"
+     "      let style = null;"
+     "      try { style = getComputedStyle(node); } catch (error) { continue; }"
+     "      if (!style) continue;"
+     "      const filter = style.backdropFilter || style.webkitBackdropFilter;"
+     "      const background = style.backgroundColor || '';"
+     "      const alpha = background.indexOf('rgba(') === 0 && background.indexOf(', 1)') < 0;"
+     "      const positioned = style.position === 'fixed' || style.position === 'absolute';"
+     "      const floating = filter && filter !== 'none' ? true : (alpha && positioned);"
+     "      if (!floating) continue;"
+     "      const classes = node.className && node.className.toString ? node.className.toString().slice(0, 140) : '';"
+     "      found.push((node.tagName || '').toLowerCase() + '|' + classes + '|bg=' + style.backgroundColor + '|bf=' + filter);"
+     "      if (found.length >= 6) break;"
+     "    }"
+     "    send('overlays', [found.join('  \\n  ').slice(0, 900)]);"
+     "  });"
      "})();";
 
 @implementation DSHWebViewController
@@ -276,6 +315,40 @@ static NSString *const DSHPageProbeSource =
     [spinner startAnimating];
     DSHLog(@"web: loading %@", self.url.absoluteString);
     [webView loadRequest:[NSURLRequest requestWithURL:self.url]];
+
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                          selector:@selector(quietArmed:)
+                                              name:@"DSHPageQuietArmedNotification"
+                                            object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                          selector:@selector(keyboardWillShow:)
+                                              name:UIKeyboardWillShowNotification
+                                            object:nil];
+    if ([NSFileManager.defaultManager fileExistsAtPath:@"/tmp/dsh-overlay-probe.on"]) {
+        __weak typeof(self) weakSelf = self;
+        self.overlayTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *__unused timer) {
+            [weakSelf.webView evaluateJavaScript:@"window.dispatchEvent(new Event('dsh:probe-overlays'))" completionHandler:nil];
+        }];
+    }
+}
+
+/// The page is about to put focus back in its composer after a stop; keep the
+/// keyboard down for a moment unless the user taps the composer themselves.
+- (void)quietArmed:(NSNotification *)notification {
+    self.quietUntil = NSDate.date.timeIntervalSince1970 + 3.0;
+}
+
+- (void)keyboardWillShow:(NSNotification *)notification {
+    if (NSDate.date.timeIntervalSince1970 > self.quietUntil) {
+        return;
+    }
+    DSHLog(@"web: keyboard dismissed inside the stop window");
+    [self.webView endEditing:YES];
+}
+
+- (void)dealloc {
+    [self.overlayTimer invalidate];
+    [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 
 - (void)closeTapped:(UIButton *)sender {

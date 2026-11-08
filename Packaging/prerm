@@ -1,0 +1,11 @@
+#!/bin/sh
+# Runs as root before removal: unload the control daemon.
+set -e
+
+LABEL="bc.8848.dshcontrol.control"
+
+launchctl bootout "system/${LABEL}" 2>/dev/null || true
+launchctl bootout "user/501/${LABEL}" 2>/dev/null || true
+launchctl bootout "gui/501/${LABEL}" 2>/dev/null || true
+
+exit 0

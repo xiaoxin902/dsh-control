@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #import "RootViewController.h"
 
+#import <dlfcn.h>
+
 #import "DSHService.h"
 #import "DSHWebViewController.h"
 
@@ -46,6 +48,16 @@
                                           selector:@selector(returnedFromHelper:)
                                               name:@"DSHReturnedFromHelperNotification"
                                             object:nil];
+    if ([NSFileManager.defaultManager fileExistsAtPath:@"/tmp/dsh-selfcheck.on"]) {
+        dispatch_async(self.ioQueue, ^{
+            [DSHService runCapabilitySelfCheck];
+        });
+    }
+    if ([NSFileManager.defaultManager fileExistsAtPath:@"/tmp/dsh-launch-probe.on"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self runLaunchProbe];
+        });
+    }
     [self refreshStatus];
 }
 
@@ -371,6 +383,46 @@
 
 #pragma mark - Helper app
 
+/// The daemon launchd starts on our request file: no window, no app switch.
+- (void)runDaemonCommand:(NSString *)command {
+    [self setBusy:YES];
+    NSTimeInterval since = NSDate.date.timeIntervalSince1970 - 0.5;
+
+    if (![DSHService requestControlCommand:command]) {
+        [self setBusy:NO];
+        [self runHelperCommand:command];
+        return;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(self.ioQueue, ^{
+        NSDictionary *result = nil;
+        for (int i = 0; i < 80; i++) {
+            result = [DSHService controlResultNewerThan:since];
+            if (result) {
+                break;
+            }
+            usleep(250 * 1000);
+        }
+        NSDictionary *finalResult = result ?: @{ @"ok": @NO, @"message": @"控制守护进程没有回应（超时）。" };
+        dispatch_async(dispatch_get_main_queue(), ^{
+            RootViewController *strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+            [strongSelf setBusy:NO];
+            [strongSelf refreshStatus];
+            [DSHService removeControlRequest];
+            BOOL ok = [finalResult[@"ok"] boolValue];
+            DSHLog(@"daemon: %@ -> ok=%d %@", command, ok, finalResult[@"message"] ?: @"");
+            if (!ok) {
+                [strongSelf showAlertWithTitle:[command isEqualToString:@"stop"] ? @"停止未完成" : @"启动未完成"
+                                       message:finalResult[@"message"] ?: @"未知错误"];
+            }
+        });
+    });
+}
+
 /// The sandboxed app cannot run the launcher or signal dsh, so the work
 /// happens in the bundled helper app: open its URL, then read the answer it
 /// leaves in /tmp/dsh-helper.json.
@@ -502,8 +554,12 @@
             }
             [strongSelf setBusy:NO];
             if (blocked) {
-                DSHLog(@"control: %@ blocked here (%@), handing it to the helper", command, error.localizedDescription);
-                [strongSelf runHelperCommand:command];
+                DSHLog(@"control: %@ blocked here (%@)", command, error.localizedDescription);
+                if ([DSHService controlDaemonInstalled]) {
+                    [strongSelf runDaemonCommand:command];
+                } else {
+                    [strongSelf runHelperCommand:command];
+                }
                 return;
             }
             [strongSelf refreshStatus];
@@ -521,6 +577,47 @@
                                                            preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+#pragma mark - Launch probe
+
+/// Diagnostic: which SpringBoard launch options keep the helper in the
+/// background? Each candidate is tried and whether this app stayed active is
+/// logged, so no screen watching is needed.
+- (void)runLaunchProbe {
+    void *handle = dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_NOW);
+    if (!handle) {
+        DSHLog(@"probe: dlopen failed %s", dlerror());
+        return;
+    }
+    typedef Boolean (*LaunchFn)(CFStringRef, CFURLRef, CFDictionaryRef, CFDictionaryRef, CFStringRef *);
+    LaunchFn launch = (LaunchFn)dlsym(handle, "SBSLaunchApplicationWithIdentifierAndURLAndLaunchOptions");
+    if (!launch) {
+        DSHLog(@"probe: symbol SBSLaunchApplicationWithIdentifierAndURLAndLaunchOptions missing");
+        dlclose(handle);
+        return;
+    }
+
+    NSArray<NSString *> *keys = @[ @"SBSLaunchApplicationOptionLaunchInBackground",
+                                   @"SBSLaunchInBackground",
+                                   @"SBLaunchInBackground",
+                                   @"LaunchInBackground" ];
+    NSURL *url = [NSURL URLWithString:@"dshhelper://start"];
+    for (NSString *key in keys) {
+        CFStringRef launchError = NULL;
+        NSDictionary *options = @{ key : @YES };
+        Boolean started = launch(CFSTR("bc.8848.dshcontrol.helper"),
+                                 (__bridge CFURLRef)url,
+                                 (__bridge CFDictionaryRef)options,
+                                 NULL,
+                                 &launchError);
+        DSHLog(@"probe: %@ -> %d error=%@", key, started,
+               launchError ? (__bridge NSString *)launchError : @"(none)");
+        sleep(2);
+        DSHLog(@"probe: after %@ state=%ld (1=active,2=background)",
+               key, (long)UIApplication.sharedApplication.applicationState);
+    }
+    dlclose(handle);
 }
 
 @end

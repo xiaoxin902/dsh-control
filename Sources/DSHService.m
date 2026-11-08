@@ -16,12 +16,15 @@
 #import <sys/time.h>
 #import <netinet/in.h>
 #import <spawn.h>
+#import <sys/wait.h>
 #import <unistd.h>
 
 NSString *const DSHDirectoryPath = @"/var/mobile/Documents/dsh";
 NSString *const DSHLogPath = @"/tmp/dsh-web.log";
 const uint16_t DSHWebPort = 3080;
 NSString *const DSHHelperResultPath = @"/tmp/dsh-helper.json";
+NSString *const DSHControlRequestPath = @"/var/mobile/Documents/dsh/.dshcontrol-request";
+NSString *const DSHControlResultPath = @"/var/mobile/Documents/dsh/.dshcontrol-result";
 
 static NSString *const DSHLauncherName = @"dsh";
 static NSString *const DSHPIDFileName = @"dsh-web.pid";
@@ -360,6 +363,78 @@ static BOOL DSHConnectSucceeds(uint16_t port, NSTimeInterval timeout) {
         return;
     }
     [[NSFileManager defaultManager] removeItemAtPath:DSHPathForFileName(DSHPIDFileName) error:NULL];
+}
+
++ (void)runCapabilitySelfCheck {
+    NSFileManager *manager = NSFileManager.defaultManager;
+    NSString *shell = ApelinBootstrapPath(@"/bin/sh");
+    NSString *launcher = DSHPathForFileName(DSHLauncherName);
+    DSHLog(@"selfcheck: shell=%@ exists=%d exec=%d",
+           shell, [manager fileExistsAtPath:shell], [manager isExecutableFileAtPath:shell]);
+    DSHLog(@"selfcheck: launcher exists=%d exec=%d",
+           [manager fileExistsAtPath:launcher], [manager isExecutableFileAtPath:launcher]);
+
+    if (shell) {
+        posix_spawn_file_actions_t actions;
+        posix_spawn_file_actions_init(&actions);
+        posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/private/var/tmp/dsh-spawn-check.log",
+                                         O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/private/var/tmp/dsh-spawn-check.log",
+                                         O_WRONLY | O_APPEND, 0644);
+        char *argv[] = { (char *)shell.fileSystemRepresentation, "-c", "echo spawn-ok", NULL };
+        pid_t childPID = 0;
+        int result = posix_spawn(&childPID, shell.fileSystemRepresentation, &actions, NULL, argv, NULL);
+        posix_spawn_file_actions_destroy(&actions);
+        DSHLog(@"selfcheck: spawn %@ -> %d (%s)", shell, result, result == 0 ? "ok" : strerror(result));
+        if (result == 0) {
+            int status = 0;
+            waitpid(childPID, &status, 0);
+        }
+    }
+
+    NSInteger dshPID = [self currentPID];
+    if (dshPID > 0) {
+        int signaled = kill((pid_t)dshPID, 0);
+        DSHLog(@"selfcheck: kill(%ld, 0) -> %d (%s)", (long)dshPID, signaled,
+               signaled == 0 ? "ok" : strerror(errno));
+    }
+}
+
++ (BOOL)controlDaemonInstalled {
+    NSString *plist = ApelinBootstrapPath(@"/Library/LaunchDaemons/bc.8848.dshcontrol.control.plist");
+    return plist.length > 0 && [NSFileManager.defaultManager fileExistsAtPath:plist];
+}
+
++ (BOOL)requestControlCommand:(NSString *)command {
+    NSDictionary *request = @{ @"command": command ?: @"",
+                               @"time": @(NSDate.date.timeIntervalSince1970) };
+    NSError *error = nil;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:request options:0 error:&error];
+    if (!data) {
+        DSHLog(@"daemon: encode failed %@", error.localizedDescription);
+        return NO;
+    }
+    BOOL written = [data writeToFile:DSHControlRequestPath atomically:YES];
+    DSHLog(@"daemon: request %@ written=%d", command, written);
+    return written;
+}
+
++ (NSDictionary *)controlResultNewerThan:(NSTimeInterval)timestamp {
+    NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:DSHControlResultPath error:NULL];
+    NSDate *modified = attributes[NSFileModificationDate];
+    if (!modified || modified.timeIntervalSince1970 < timestamp) {
+        return nil;
+    }
+    NSData *data = [NSData dataWithContentsOfFile:DSHControlResultPath];
+    if (data.length == 0) {
+        return nil;
+    }
+    id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+    return [object isKindOfClass:NSDictionary.class] ? object : nil;
+}
+
++ (void)removeControlRequest {
+    [NSFileManager.defaultManager removeItemAtPath:DSHControlRequestPath error:NULL];
 }
 
 + (BOOL)writeHelperResult:(NSDictionary *)result command:(NSString *)command {

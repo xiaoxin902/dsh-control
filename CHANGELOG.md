@@ -1,5 +1,18 @@
 # DSH 更新日志
 
+## 1.1.0（2026-11-08）
+
+- 启动 / 停止不再跳转界面：新增一个极小的 launchd 守护进程
+  （`bc.8848.dshcontrol.control`，以 mobile 运行、无沙盒、`WatchPaths` 触发）。
+  应用只写一个请求文件 `/var/mobile/Documents/dsh/.dshcontrol-request`，守护进程执行完把结果
+  写到 `.dshcontrol-result` 后退出；实测 `stop` → `{"ok":true,"message":"stopped"}`、
+  `start` → `started`，dsh 进程来去正常，全程没有窗口跳转。
+  主应用仍先尝试自己执行，被沙盒拒绝（EPERM）才走守护进程；守护进程缺失时回退到辅助 app。
+- 键盘：点停止后 3 秒、点任何按钮（`+`、`···`、回退、停止）后 1.2 秒内，页面自己发起的
+  聚焦一律吞掉（`HTMLElement.prototype.focus` 打补丁 + `focusin` 兜底 + 原生
+  `endEditing`），你自己点输入框仍然立刻弹键盘。
+- 「打开」在刚启动时最多等 5 秒等 token 写进日志，不再第一次点就弹「没有找到访问地址」。
+
 ## 1.0.3（2026-11-08）
 
 - 停止后不再自动弹键盘：页面在“忙 → 不忙”时会把焦点塞回输入框（dsh 自己的逻辑），
