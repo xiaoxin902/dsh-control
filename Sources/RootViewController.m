@@ -332,17 +332,41 @@
 }
 
 - (void)openTapped:(UIButton *)sender {
-    NSString *urlString = [DSHService currentTokenURL];
-    NSURL *url = urlString.length > 0 ? [NSURL URLWithString:urlString] : nil;
-    if (!url) {
-        DSHLog(@"open: no token URL in /tmp/dsh-web.log");
-        [self showAlertWithTitle:@"没有找到访问地址"
-                         message:@"日志 /tmp/dsh-web.log 里还没有 dsh 的访问地址。\n请先点「启动」，等状态变成「运行中」再打开。"];
+    if (self.isBusy) {
         return;
     }
-    DSHLog(@"open: presenting %@", url.absoluteString);
-    DSHWebViewController *browser = [[DSHWebViewController alloc] initWithURL:url];
-    [self presentViewController:browser animated:YES completion:nil];
+    [self setBusy:YES];
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(self.ioQueue, ^{
+        // Right after 启动 the log can still be empty for a moment; give it a
+        // few seconds instead of failing on the first tap.
+        NSString *urlString = [DSHService currentTokenURL];
+        BOOL serviceUp = [DSHService isRunning];
+        for (int i = 0; i < 10 && urlString.length == 0 && serviceUp; i++) {
+            usleep(500 * 1000);
+            urlString = [DSHService currentTokenURL];
+            serviceUp = [DSHService isRunning];
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            RootViewController *strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+            [strongSelf setBusy:NO];
+            NSURL *url = urlString.length > 0 ? [NSURL URLWithString:urlString] : nil;
+            if (!url) {
+                DSHLog(@"open: no token URL (serviceUp=%d)", serviceUp);
+                [strongSelf showAlertWithTitle:@"没有找到访问地址"
+                                       message:@"日志 /tmp/dsh-web.log 里还没有 dsh 的访问地址。\n请先点「启动」，等状态变成「运行中」再打开。"];
+                return;
+            }
+            DSHLog(@"open: presenting %@", url.absoluteString);
+            DSHWebViewController *browser = [[DSHWebViewController alloc] initWithURL:url];
+            [strongSelf presentViewController:browser animated:YES completion:nil];
+        });
+    });
 }
 
 #pragma mark - Helper app
@@ -430,11 +454,65 @@
 }
 
 - (void)startTapped:(UIButton *)sender {
-    [self runHelperCommand:@"start"];
+    [self controlServiceWithCommand:@"start"];
 }
 
 - (void)stopTapped:(UIButton *)sender {
-    [self runHelperCommand:@"stop"];
+    [self controlServiceWithCommand:@"stop"];
+}
+
+/// Runs the command here when the sandbox lets an app spawn and signal
+/// processes; when it does not, the same command goes to the helper app.
+- (void)controlServiceWithCommand:(NSString *)command {
+    if (self.isBusy) {
+        return;
+    }
+    [self setBusy:YES];
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(self.ioQueue, ^{
+        NSError *error = nil;
+        BOOL ok = NO;
+
+        if ([command isEqualToString:@"start"]) {
+            if ([DSHService isRunning]) {
+                ok = YES;
+            } else if ([DSHService startWithError:&error]) {
+                ok = YES;
+                for (int i = 0; i < 40 && ![DSHService isRunning]; i++) {
+                    usleep(500 * 1000);
+                }
+                if (![DSHService isRunning]) {
+                    error = [NSError errorWithDomain:@"bc.8848.dshcontrol"
+                                                code:ETIMEDOUT
+                                            userInfo:@{ NSLocalizedDescriptionKey:
+                                                            @"启动命令已经发出，但 20 秒内端口 3080 没有响应。\n可以稍后再看状态，或查看日志 /tmp/dsh-web.log。" }];
+                    ok = NO;
+                }
+            }
+        } else {
+            ok = [DSHService stopWithError:&error];
+        }
+
+        BOOL blocked = !ok && (error.code == EPERM || error.code == EACCES || error.code == ENOEXEC);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            RootViewController *strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+            [strongSelf setBusy:NO];
+            if (blocked) {
+                DSHLog(@"control: %@ blocked here (%@), handing it to the helper", command, error.localizedDescription);
+                [strongSelf runHelperCommand:command];
+                return;
+            }
+            [strongSelf refreshStatus];
+            if (!ok) {
+                [strongSelf showAlertWithTitle:[command isEqualToString:@"stop"] ? @"停止未完成" : @"启动未完成"
+                                       message:error.localizedDescription ?: @"未知错误"];
+            }
+        });
+    });
 }
 
 - (void)showAlertWithTitle:(NSString *)title message:(NSString *)message {
