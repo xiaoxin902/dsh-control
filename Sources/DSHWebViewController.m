@@ -145,6 +145,33 @@ static NSString *const DSHPageProbeSource =
      "      }"
      "    });"
      "  }"
+     // 停止后 dsh 会把焦点塞回输入框、iOS 就弹键盘。取消后的短窗口里，
+     // 没有用户手势的自动聚焦一律 blur 掉；自己点输入框则放行。
+     "  let quietUntil = 0;"
+     "  let lastGesture = 0;"
+     "  const markGesture = () => { lastGesture = Date.now(); };"
+     "  ['pointerdown', 'touchstart', 'mousedown', 'keydown'].forEach((type) => {"
+     "    document.addEventListener(type, markGesture, true);"
+     "  });"
+     "  document.addEventListener('focusin', (event) => {"
+     "    if (Date.now() > quietUntil) return;"
+     "    if (Date.now() - lastGesture < 700) return;"
+     "    const target = event.target;"
+     "    setTimeout(() => {"
+     "      try { if (target && target.isConnected && typeof target.blur === 'function') target.blur(); } catch (error) {}"
+     "    }, 0);"
+     "  }, true);"
+     "  window.addEventListener('dsh:quiet-keyboard', () => { quietUntil = Date.now() + 2500; });"
+     // cancel 请求成功后，通知上面的抑制逻辑
+     "  const originalFetchForCancel = window.fetch;"
+     "  window.fetch = function(input, init) {"
+     "    const url = typeof input === 'string' ? input : (input && input.url) || '';"
+     "    const result = originalFetchForCancel.apply(this, arguments);"
+     "    if (url.indexOf('session/cancel') >= 0) {"
+     "      result.then(() => window.dispatchEvent(new Event('dsh:quiet-keyboard')), () => {});"
+     "    }"
+     "    return result;"
+     "  };"
      "})();";
 
 @implementation DSHWebViewController
