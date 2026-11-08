@@ -284,8 +284,11 @@
     self.statusDetailLabel.text = running
         ? [NSString stringWithFormat:@"端口 3080 已连通 · PID %ld", (long)pid]
         : @"端口 3080 没有响应";
-    self.startButton.enabled = !running;
-    self.stopButton.enabled = running;
+    // Both commands stay tappable: they are idempotent, and a disabled button
+    // that the status guessed wrong is worse than a command that answers
+    // "already running".
+    self.startButton.enabled = YES;
+    self.stopButton.enabled = YES;
     DSHLog(@"status applied: running=%d pid=%ld", running, (long)pid);
 }
 
@@ -295,8 +298,6 @@
         self.statusValueLabel.text = @"处理中…";
         self.statusValueLabel.textColor = UIColor.secondaryLabelColor;
         self.statusDetailLabel.text = @"正在执行命令，请稍候";
-        self.startButton.enabled = NO;
-        self.stopButton.enabled = NO;
         self.openButton.enabled = NO;
     } else {
         self.openButton.enabled = YES;
@@ -392,6 +393,39 @@
     self.statusDetailLabel.text = @"命令已发出";
 }
 
+/// After a start the port needs a few seconds; keep the screen in step instead
+/// of leaving it on "未运行" until the user wonders whether the tap worked.
+- (void)waitForServiceAfterStart:(NSUInteger)generation {
+    [self setBusy:YES];
+    self.statusValueLabel.text = @"启动中…";
+    self.statusValueLabel.textColor = UIColor.secondaryLabelColor;
+    self.statusDetailLabel.text = @"等待端口 3080 响应";
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(self.ioQueue, ^{
+        BOOL up = NO;
+        for (int i = 0; i < 60; i++) {
+            if ([DSHService isRunning]) {
+                up = YES;
+                break;
+            }
+            usleep(500 * 1000);
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            RootViewController *strongSelf = weakSelf;
+            if (!strongSelf || generation != strongSelf.commandGeneration) {
+                return;
+            }
+            [strongSelf setBusy:NO];
+            [strongSelf refreshStatus];
+            if (!up) {
+                [strongSelf showAlertWithTitle:@"启动未完成"
+                                       message:@"启动命令已执行，但 30 秒内端口 3080 仍未响应。\n请查看 /tmp/dsh-web.log。"];
+            }
+        });
+    });
+}
+
 /// The daemon launchd starts on our request file: no window, no app switch.
 - (void)runDaemonCommand:(NSString *)command generation:(NSUInteger)generation {
     [self setBusy:YES];
@@ -424,9 +458,12 @@
             [DSHService removeControlRequest];
             BOOL ok = [finalResult[@"ok"] boolValue];
             DSHLog(@"daemon: %@ -> ok=%d %@", command, ok, finalResult[@"message"] ?: @"");
-            if (!ok) {
+            if (!ok && ![finalResult[@"message"] isEqualToString:@"already-running"]) {
                 [strongSelf showAlertWithTitle:[command isEqualToString:@"stop"] ? @"停止未完成" : @"启动未完成"
                                        message:finalResult[@"message"] ?: @"未知错误"];
+            }
+            if ([command isEqualToString:@"start"]) {
+                [strongSelf waitForServiceAfterStart:generation];
             }
         });
     });

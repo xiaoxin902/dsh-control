@@ -148,6 +148,9 @@ static BOOL DSHConnectSucceeds(uint16_t port, NSTimeInterval timeout) {
         data = [NSData dataWithContentsOfFile:@"/private/var/tmp/dsh-web.log"];
     }
     if (data.length == 0) {
+        NSError *error = nil;
+        [NSData dataWithContentsOfFile:DSHLogPath options:0 error:&error];
+        DSHLog(@"token: cannot read %@ (%@)", DSHLogPath, error.localizedDescription ?: @"unknown");
         return nil;
     }
     NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];

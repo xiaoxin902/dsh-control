@@ -36,14 +36,11 @@ MSG=unknown-command
 
 case "$CMD" in
 start)
-	if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-		OK=true
-		MSG=already-running
-	else
-		"$DIR/dsh" >/dev/null 2>&1 &
-		OK=true
-		MSG=started
-	fi
+	# Always hand it to the launcher: it is idempotent (it reports an already
+	# running instance itself) and a stale pid file must not block a restart.
+	"$DIR/dsh" >/dev/null 2>&1 &
+	OK=true
+	MSG=started
 	;;
 stop)
 	if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
