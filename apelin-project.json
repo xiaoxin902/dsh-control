@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "projectID": "ac07e733-8c23-44af-95f6-24cab7a5348a",
+  "kind": "app",
+  "template": {
+    "extensionID": "wiki.qaq.apelin.dev.app",
+    "templateID": "uikit-objc",
+    "version": "0.1.1",
+    "digest": "sha256:e9addbec114a1e796527c0d5734b42100a5ea286af32be617ee8da406e718c1b"
+  },
+  "environment": {
+    "toolchain": {
+      "id": "67525fd44741f8a0f7d7b2e7",
+      "digest": "sha256:76823e840b327ed36e2828a7a28fc42e8fc6124d1c480d621403f595d3fd5144"
+    },
+    "sdk": {
+      "id": "iphoneos17.2-96db0f3e",
+      "digest": "sha256:96db0f3ef4dc7775fec55af884d2fad9ee0db767e15ea9aa318fe42a0fbc39c5"
+    }
+  },
+  "language": "objc",
+  "deploymentTarget": "16.0",
+  "architectures": {
+    "rootless": [
+      "arm64",
+      "arm64e"
+    ],
+    "roothide": [
+      "arm64e"
+    ]
+  },
+  "configurations": {
+    "Debug": {
+      "optimization": "0",
+      "debugInfo": true,
+      "defines": {
+        "DEBUG": "1"
+      }
+    },
+    "Release": {
+      "optimization": "2",
+      "debugInfo": true
+    }
+  },
+  "products": [
+    {
+      "id": "app",
+      "type": "app",
+      "name": "DSHControl",
+      "sources": [
+        "Sources/*.m"
+      ],
+      "headerSearchPaths": [
+        "Sources"
+      ],
+      "resources": [],
+      "infoPlist": "Resources/Info.plist",
+      "entitlements": "Packaging/App.entitlements",
+      "objcARC": true,
+      "frameworks": [
+        "Foundation",
+        "UIKit",
+        "SafariServices",
+        "QuartzCore"
+      ]
+    }
+  ],
+  "build": {
+    "steps": [
+      {
+        "type": "compile",
+        "product": "app"
+      },
+      {
+        "type": "link",
+        "product": "app"
+      },
+      {
+        "type": "bundle-resources",
+        "product": "app"
+      },
+      {
+        "type": "lipo",
+        "product": "app"
+      },
+      {
+        "type": "dsym",
+        "product": "app"
+      },
+      {
+        "type": "strip",
+        "product": "app",
+        "style": "non-global"
+      },
+      {
+        "type": "sign",
+        "product": "app",
+        "identity": "adhoc"
+      }
+    ]
+  },
+  "package": {
+    "id": "bc.8848.dshcontrol",
+    "name": "DSH",
+    "version": "1.0.0",
+    "description": "控制本机 DeepSeek Harness（dsh）Web 服务：开机自启开关、运行状态、一键启动/停止与全屏打开",
+    "longDescription": [
+      "控制这台设备上已经装好的 DeepSeek Harness（dsh）。",
+      "· 开机自启开关：创建/删除 /var/mobile/Documents/dsh/autostart.off",
+      "· 服务状态：探测 127.0.0.1:3080，显示运行中/未运行与 PID",
+      "· 打开：从 /tmp/dsh-web.log 取最新 token 链接并打开",
+      "· 启动/停止：执行 dsh 启动脚本，或结束 dsh-web.pid 里的进程",
+      "诊断日志：/tmp/dsh-control.log"
+    ],
+    "icon": "https://owngoal-dev.github.io/Apelin/icons/wiki.qaq.apelin.dev.app.png",
+    "author": "8848",
+    "section": "Applications",
+    "depends": [
+      "uikittools"
+    ],
+    "layout": [
+      {
+        "path": "/Applications/DSHControl.app",
+        "product": "app"
+      }
+    ]
+  }
+}
