@@ -77,10 +77,13 @@ NAME=MyTweak PKG=bc.8848.mytweak FILTER=com.apple.springboard \
 ## 4. 交付
 
 - 产物：`.deb` 的完整路径 + 一句话说明它做了什么。
+- **可以直接装**：把包拷进 `/var/mobile/Documents/dsh/inbox/`，等 10–25 秒，读
+  `/var/mobile/Documents/dsh/installer/result.json`（`{"ok":true,"message":"installed"}`）。
+  这是设备上一个 root 守护进程在装，dsh 自己仍是 mobile。
+  被拒时 `message` 会写原因：带维护脚本的包、文件落在插件目录以外的包都会被拒。
 - 版本简单地从 `1.0.0` 开始；每改一版给中文更新日志（写进交付说明即可）。
-- **装不了**：本环境以 mobile 运行，没有 dpkg 权限。明确告诉用户"把包放进
-  文件 app，用 Sileo/Zebra/Irisin 安装"，或让其交回 Apelin 那边安装。
-- 装上后注入 SpringBoard 需要 respring 才生效；这一步也让用户做。
+- **卸载不归这个守护管**：删插件用包管理器，或交回 Apelin 那边的会话。
+- 注入 SpringBoard 的插件装完需要 respring 才生效；dsh 没有 respring 工具，让用户做。
 
 ## 5. 用户报"没效果"时
 

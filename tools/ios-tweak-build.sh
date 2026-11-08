@@ -39,8 +39,8 @@ LIPO="$TOOLCHAIN/lipo"
 STRIP="$TOOLCHAIN/strip"
 
 case "$BOOTSTRAP" in
-rootless) ARCHES="arm64 arm64e"; ARCH_NAME="iphoneos-arm64"; PREFIX="/var/jb" ;;
-roothide) ARCHES="arm64e"; ARCH_NAME="iphoneos-arm64e"; PREFIX="" ;;
+rootless) ARCHES="arm64 arm64e"; ARCH_NAME="iphoneos-arm64"; STAGE_BASE_REL="var/jb" ;;
+roothide) ARCHES="arm64e"; ARCH_NAME="iphoneos-arm64e"; STAGE_BASE_REL="" ;;
 *) echo "BOOTSTRAP 只能是 rootless 或 roothide" >&2; exit 2 ;;
 esac
 
@@ -93,8 +93,12 @@ fi
 "$STRIP" -x "$WORK/$NAME.dylib"
 ldid -S "$WORK/$NAME.dylib"
 
-mkdir -p "$STAGE/Library/MobileSubstrate/DynamicLibraries"
-cp "$WORK/$NAME.dylib" "$STAGE/Library/MobileSubstrate/DynamicLibraries/"
+mkdir -p "$STAGE/DEBIAN"
+# rootless 的 deb 以 var/jb/ 开头（引导区相对 /），roothide 则直接在根上
+STAGE_ROOT="$STAGE"
+[ -n "$STAGE_BASE_REL" ] && STAGE_ROOT="$STAGE/$STAGE_BASE_REL"
+mkdir -p "$STAGE_ROOT/Library/MobileSubstrate/DynamicLibraries"
+cp "$WORK/$NAME.dylib" "$STAGE_ROOT/Library/MobileSubstrate/DynamicLibraries/"
 
 # 注入过滤：Filter.Bundles 里每个 bundle id 一行
 {
@@ -105,7 +109,7 @@ cp "$WORK/$NAME.dylib" "$STAGE/Library/MobileSubstrate/DynamicLibraries/"
     [ -n "$b" ] && printf '\t\t\t<string>%s</string>\n' "$b"
   done
   printf '\t\t</array>\n\t</dict>\n</dict>\n</plist>\n'
-} >"$STAGE/Library/MobileSubstrate/DynamicLibraries/$NAME.plist"
+} >"$STAGE_ROOT/Library/MobileSubstrate/DynamicLibraries/$NAME.plist"
 
 cat >"$STAGE/DEBIAN/control" <<EOF
 Package: $PKG

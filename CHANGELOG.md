@@ -1,5 +1,26 @@
 # DSH 更新日志
 
+## 1.2.3（2026-11-08）
+
+- 新增 `bc.8848.dshcontrol.installer` 守护进程（以 root 运行，`WatchPaths` 盯
+  `/var/mobile/Documents/dsh/inbox/`，另有 5 秒轮询兜底）：把投进去的插件包装上，
+  写 `/var/mobile/Documents/dsh/installer/result.json`，包移到 `done/` 或 `rejected/`。
+  只做这一件事，三道限制：
+  1. 只处理 inbox 里的 `*.deb`；
+  2. 带 `preinst/postinst/prerm/postrm` 的包直接拒绝（不允许以 root 执行脚本）；
+  3. 文件必须落在 `Library/MobileSubstrate/DynamicLibraries/`（含 rootless 的
+     `var/jb/` 前缀），出现别的路径或 setuid 文件一律拒绝。
+- 实测：探针插件包投进 inbox 后自动装好；带 `postinst` 的包被拒且脚本没执行；
+  往 `/usr/bin` 写文件的包被拒。
+- 启动脚本补 `PATH`（launchd 给的是空 PATH，否则 `mv`/`basename` 都找不到）；
+  `ios-tweak-build.sh` 生成的 deb 改为 rootless 的 `var/jb/` 布局，Irisin 才收。
+- postinst 创建 `inbox/`、`installer/` 及其子目录并交给 mobile（逐层
+  `mkdir -m 0755` + `chown -h 501:501`），同时加载两个守护进程；prerm 一并卸载。
+
+## 1.2.0（2026-11-08）
+
+- 安装守护进程的第一版（`bc.8848.dshcontrol.installer`），见 1.2.3 的说明。
+
 ## 1.1.2（2026-11-08）
 
 - 页面里的弹层（右上「更多」、输入框旁的「+」、模型与推理强度菜单）改成**实色背景**：

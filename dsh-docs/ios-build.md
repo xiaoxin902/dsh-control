@@ -88,16 +88,27 @@ NAME=MyTweak PKG=bc.8848.mytweak FILTER=com.apple.springboard \
 `BOOTSTRAP=roothide`。示例源码在 `tools/example/Sources/Tweak.m`。
 本机实测：编译、lipo（arm64+arm64e）、strip、ldid 签名、dpkg-deb 打包全部通过。
 
-## 装到设备上（dsh 做不到的部分）
+## 装到设备上
 
-dsh 以 **mobile** 运行，`dpkg -i` 没有权限，包管理器也不接受它。所以流程是：
+B 方案：这台设备上有一个 root 守护进程 `bc.8848.dshcontrol.installer`，它只做一件事——
+把投进 inbox 的插件包装上。**dsh 自己仍然是 mobile，没有 root**。
 
-1. dsh 把 `.deb` 放到用户拿得到的地方（例如工作目录里）；
-2. 用户用 Sileo / Zebra / Irisin 手动安装，或让 Apelin 那边的会话用
-   `apelin_package_install` 装（那条路有审批与卸载句柄）。
+```sh
+cp build/bc.8848.mytweak_1.0.0_iphoneos-arm64.deb /var/mobile/Documents/dsh/inbox/
+sleep 20
+cat /var/mobile/Documents/dsh/installer/result.json     # {"ok":true,"message":"installed"}
+```
 
-注入 SpringBoard 的插件装完需要注销（respring）才生效；装之前如果同名 dylib
-已被别的包占用，安装会被拒绝——不要靠改包名绕过。
+- 结果：`{"ok":true|false,"message":"…"}`；装过的包在 `installer/done/`，被拒的在
+  `installer/rejected/`，全过程记录在 `installer/installer.log`。
+- 它 5 秒轮询一次，通常 10–25 秒内有结果（Irisin 装包本身要十几秒）。
+- **三道限制**：只处理 inbox 的 `*.deb`；带 `preinst/postinst/prerm/postrm` 的包直接
+  拒绝；文件必须落在 `Library/MobileSubstrate/DynamicLibraries/`（rootless 的 deb 要
+  带 `var/jb/` 前缀），出现别的路径或 setuid 文件同样拒绝。
+- 因此自己的 `ios-tweak-build.sh` 产物可以直接投；**带脚本的包投进去只会被拒**。
+- 卸载不归它管：删插件要用包管理器，或让 Apelin 那边的会话用 `apelin_package_remove`。
+- 注入 SpringBoard 的插件装完需要 respring 才生效；dsh 没有 respring 工具，让用户做。
+
 
 ## roothide 的差别
 

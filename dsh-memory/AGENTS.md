@@ -85,9 +85,12 @@ Apelin 安装的 clang 工具链、iPhoneOS 17.2 SDK、substrate 头文件与链
 
 `NAME=… PKG=bc.8848.xxx FILTER=com.apple.springboard SRC=Sources OUT=build /var/mobile/.dsh/bin/ios-tweak-build.sh`
 
-你能编译、签名、打包，但**不能安装**（本环境以 mobile 运行，没有 dpkg 权限）：
-把 `.deb` 交给用户，由其包管理器安装。`TMPDIR` 指向不可写目录，打包与 `mktemp`
-都要显式给 `/tmp` 或 `$HOME/.cache`。
+你能编译、签名、打包，并且**可以直接装插件**：把 `.deb` 拷进
+`/var/mobile/Documents/dsh/inbox/`，等 10–25 秒读
+`/var/mobile/Documents/dsh/installer/result.json`（`{"ok":true,"message":"installed"}`）。
+那是设备上一个 root 守护进程在装，你自己仍是 mobile；它只接受插件 dylib 包，
+带维护脚本或写到插件目录以外的包会被拒并写明原因。卸载和 respring 不归它管，交给用户。
+`TMPDIR` 指向不可写目录，打包与 `mktemp` 都要显式给 `/tmp` 或 `$HOME/.cache`。
 
 用户让你"写个插件"时，按 `~/.dsh/docs/tweak-workflow.md` 的流程做：先问清功能边界、
 包名（默认 `bc.8848.<英文名>`）、作者（默认 8848）、装不装，然后建
