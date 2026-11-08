@@ -1,7 +1,3 @@
----
-name: apelin-tweak-runtime
-description: How a tweak behaves at run time inside another process: logging with os_log so apelin_log_read can see it, what the host's sandbox lets it read and write, reading settings, and telling another process something changed with a Darwin notification. Read when a tweak logs, stores a setting, reads files, or talks to another process.
----
 
 # A tweak at run time
 

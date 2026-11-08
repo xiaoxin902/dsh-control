@@ -1,7 +1,3 @@
----
-name: apelin-icli
-description: Running icli, the device's command-line tool, through shell_run: apps, URLs, files, preferences, processes, launchd, packages, the screen and input, when no dedicated Apelin tool does it, and icli probe, a JavaScriptCore script with Objective-C reflection for probing what the device has. What runs as mobile, what changes the device only as the user asks, roothide paths, and what to tell the user when icli is missing.
----
 
 # icli
 

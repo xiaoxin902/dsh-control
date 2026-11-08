@@ -70,3 +70,8 @@ DeepSeek Harness 在本机（iPhone16,2 / iOS 17.2.1 / Dopamine rootless）装�
 关键坑：abort 时不能以流错误结束，否则 harness 的 turn 收不了尾（会话只有 `turn/start` 没 `turn/end`，UI 的「停止」看着没反应）；改成 abort 时先给消费方 EOF（`PassThrough.end()`）再断 socket，并在头未到时回一个空 200，3/3 轮取消都能正常写 `turn/end`。
 
 排查日志：`/tmp/dsh-fetch.log`（`DSH_TRACE=0` 关）、`/tmp/dsh-control.log`（应用侧页面桥）、会话事件 `~/.dsh/sessions/<workspace>/<session>/session.v4.jsonl`。
+
+## Apelin 工具知识文档
+
+`~/.dsh/docs/apelin/` 下有 13 篇文档，描述的是 **Apelin**（本机另一个 IDE 助手）的工具与工作流，从它自带的技能导出。里面的 `apelin_*`、`icli`、`irisin-cli` 等工具**在本环境不存在**，不要调用也不要假装调用；需要时把它们当背景知识读，索引见 `~/.dsh/docs/apelin/README.md`。
+

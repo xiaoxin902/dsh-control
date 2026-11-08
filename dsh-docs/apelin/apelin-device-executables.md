@@ -1,7 +1,3 @@
----
-name: apelin-device-executables
-description: Signing a program you compiled yourself before shell_run runs it (a helper, a converter, a test program), and the entitlements one needs that uses VideoToolbox, Core Video or IOSurface, Core Image, Metal or another framework that reaches for the GPU or a media accelerator. Read before running any Mach-O you linked.
----
 
 # Running a program you built
 

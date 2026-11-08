@@ -1,7 +1,3 @@
----
-name: apelin-external-build
-description: Building and installing a workspace (an imported repository) with its own tools: the build script Apelin runs, what it gets, the one package it writes, and how that package is installed.
----
 
 # Building a workspace
 

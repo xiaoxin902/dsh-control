@@ -1,7 +1,3 @@
----
-name: apelin-project-description
-description: Every member of apelin-project.json, the build description Apelin's build reads: products, flags, steps, package, layout, tweak filter, the macros the build defines, and what asks the user.
----
 
 # The project description
 

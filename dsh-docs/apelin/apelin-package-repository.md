@@ -1,7 +1,3 @@
----
-name: apelin-package-repository
-description: Maintaining the user's package repository (an APT source on GitHub Pages): its layout, the packages in debs/, depictions, the control fields a package needs, how a release is published, and keeping old versions in check.
----
 
 # Maintaining a package repository
 

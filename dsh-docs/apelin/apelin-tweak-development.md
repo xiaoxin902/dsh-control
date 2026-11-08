@@ -1,7 +1,3 @@
----
-name: apelin-tweak-development
-description: Writing and changing a tweak in an Apelin project: layout, hooks, filters, the on-device toolchain and SDK, and the edit-build loop.
----
 
 # Tweak development on the device
 

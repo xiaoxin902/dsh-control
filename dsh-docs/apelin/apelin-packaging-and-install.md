@@ -1,7 +1,3 @@
----
-name: apelin-packaging-and-install
-description: From a successful build to a confirmed load: the package artifact, the package and bundle identifiers to settle before the first install and how to change one after it, install through the system installer, what to do when another package is in its way, maintainer scripts, respring, apelin_package_confirm_loaded, and removal.
----
 
 # Packaging and install
 

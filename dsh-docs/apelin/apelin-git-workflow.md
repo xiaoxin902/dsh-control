@@ -1,7 +1,3 @@
----
-name: apelin-git-workflow
-description: Keeping a project's history in git for the user: when to commit on your own, how (git_commit with all, messages, .gitignore), git_init for a project without a repository, importing a repository into a workspace, pushing only when asked, and a squash or a forced push only when the user explicitly asks for one.
----
 
 # Keeping the project in git
 

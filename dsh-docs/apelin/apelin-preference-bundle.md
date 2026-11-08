@@ -1,7 +1,3 @@
----
-name: apelin-preference-bundle
-description: A Settings pane for a tweak: the PSListController subclass, Root.plist specifiers, the PreferenceLoader entry, the preferences domain it stores to, and how the tweak reads the same setting.
----
 
 # A preference bundle
 

@@ -1,7 +1,3 @@
----
-name: apelin-package-dependencies
-description: Getting a package installed: your project's own build goes through apelin_package_install; a dependency from the user's repositories goes through shell_run as root with irisin-cli, with the user's approval. Diagnosing a refused install or upgrade with irisin-cli's questions and dry runs, as root. Why apt and dpkg are never the way.
----
 
 # Installing packages
 

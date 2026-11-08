@@ -1,7 +1,3 @@
----
-name: apelin-crash-triage
-description: When the target crashes or resprings after an install: find the report, symbolicate it against this build's dSYM, read it before changing code.
----
 
 # Crash triage
 

@@ -1,7 +1,3 @@
----
-name: apelin-bootstrap-paths
-description: How roothide and rootless spell paths, so a tweak, a script or a plist names a file the way the thing that opens it expects: jbroot vs /var/jb, /rootfs, @PREFIX@ and @ROOTFS@, @loader_path/.jbroot, which paths never change, and why a resolved jbroot path is never written down. Read before writing any path in code, a build script, a maintainer script or a note.
----
 
 # Bootstrap paths
 
