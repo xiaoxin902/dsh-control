@@ -65,6 +65,88 @@ static NSString *const DSHShimSource =
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
 @end
 
+/// Forwards what the page logs, and every fetch it makes, into the app's log.
+@interface DSHPageBridge : NSObject <WKScriptMessageHandler>
+@end
+
+@implementation DSHPageBridge
+
+- (void)userContentController:(WKUserContentController *)userContentController
+      didReceiveScriptMessage:(WKScriptMessage *)message {
+    NSString *text = [message.body isKindOfClass:NSString.class] ? message.body : [message.body description];
+    DSHLog(@"page: %@", text);
+}
+
+@end
+
+/// Runs before any page script: reports console errors, uncaught errors and
+/// each fetch (method, URL, status) to the app, which writes them to
+/// /tmp/dsh-control.log.
+static NSString *const DSHPageProbeSource =
+    @"(function() {"
+     "  const send = (kind, parts) => {"
+     "    try {"
+     "      const text = parts.map((part) => {"
+     "        try { return typeof part === 'object' ? JSON.stringify(part).slice(0, 300) : String(part); }"
+     "        catch (error) { return String(part); }"
+     "      }).join(' ');"
+     "      window.webkit.messageHandlers.dsh.postMessage(kind + ' ' + text.slice(0, 600));"
+     "    } catch (error) {}"
+     "  };"
+     "  const consoleError = console.error;"
+     "  console.error = function() { send('console.error', Array.prototype.slice.call(arguments)); consoleError.apply(console, arguments); };"
+     "  const consoleWarn = console.warn;"
+     "  console.warn = function() { send('console.warn', Array.prototype.slice.call(arguments)); consoleWarn.apply(console, arguments); };"
+     "  window.addEventListener('error', (event) => send('window.error', [event.message, (event.filename || '') + ':' + event.lineno]));"
+     "  window.addEventListener('unhandledrejection', (event) => {"
+     "    const reason = event.reason;"
+     "    send('unhandledrejection', [String(reason && (reason.stack || reason.message || reason))]);"
+     "  });"
+     "  const originalFetch = window.fetch;"
+     "  window.fetch = function(input, init) {"
+     "    const url = typeof input === 'string' ? input : (input && input.url) || '';"
+     "    const method = (init && init.method) || (input && input.method) || 'GET';"
+     "    const started = Date.now();"
+     "    const isApi = url.indexOf('api/') >= 0;"
+     "    if (isApi && init && typeof init.body === 'string') send('api.request', [method, url, init.body.slice(0, 200)]);"
+     "    return originalFetch.apply(this, arguments).then((response) => {"
+     "      send('fetch', [method, url, response.status, (Date.now() - started) + 'ms']);"
+     "      const type = response.headers.get('content-type') || '';"
+     "      if (isApi && type.indexOf('json') >= 0) {"
+     "        response.clone().text().then((text) => send('api.response', [method, url, response.status, text.slice(0, 300)])).catch(() => {});"
+     "      }"
+     "      return response;"
+     "    }, (error) => {"
+     "      send('fetch.error', [method, url, String((error && error.message) || error), (Date.now() - started) + 'ms']);"
+     "      throw error;"
+     "    });"
+     "  };"
+     "  if (window.WebSocket) {"
+     "    const OriginalWebSocket = window.WebSocket;"
+     "    window.WebSocket = new Proxy(OriginalWebSocket, {"
+     "      construct(target, args) {"
+     "        const socket = new target(...args);"
+     "        send('ws.create', [String(args[0])]);"
+     "        socket.addEventListener('open', () => send('ws.open', [String(args[0])]));"
+     "        socket.addEventListener('close', (event) => send('ws.close', [String(args[0]), event.code, event.reason]));"
+     "        socket.addEventListener('error', () => send('ws.error', [String(args[0])]));"
+     "        return socket;"
+     "      }"
+     "    });"
+     "  }"
+     "  if (window.EventSource) {"
+     "    const OriginalEventSource = window.EventSource;"
+     "    window.EventSource = new Proxy(OriginalEventSource, {"
+     "      construct(target, args) {"
+     "        const source = new target(...args);"
+     "        send('es.create', [String(args[0])]);"
+     "        source.addEventListener('error', () => send('es.error', [String(args[0]), source.readyState]));"
+     "        return source;"
+     "      }"
+     "    });"
+     "  }"
+     "})();";
+
 @implementation DSHWebViewController
 
 - (instancetype)initWithURL:(NSURL *)url {
@@ -87,6 +169,11 @@ static NSString *const DSHShimSource =
                                                injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                                             forMainFrameOnly:NO];
     [configuration.userContentController addUserScript:shim];
+    WKUserScript *probe = [[WKUserScript alloc] initWithSource:DSHPageProbeSource
+                                                   injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                forMainFrameOnly:YES];
+    [configuration.userContentController addUserScript:probe];
+    [configuration.userContentController addScriptMessageHandler:[DSHPageBridge new] name:@"dsh"];
 
     WKWebView *webView = [[WKWebView alloc] initWithFrame:self.view.bounds configuration:configuration];
     webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
