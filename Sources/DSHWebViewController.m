@@ -104,26 +104,49 @@ static NSString *const DSHShimSource =
     [self.view addSubview:spinner];
     self.spinner = spinner;
 
-    UIButtonConfiguration *closeConfiguration = [UIButtonConfiguration grayButtonConfiguration];
-    closeConfiguration.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
-    closeConfiguration.image = [UIImage systemImageNamed:@"xmark"];
-    closeConfiguration.baseForegroundColor = UIColor.labelColor;
-    closeConfiguration.contentInsets = NSDirectionalEdgeInsetsMake(8, 8, 8, 8);
-    UIButton *closeButton = [UIButton buttonWithConfiguration:closeConfiguration primaryAction:nil];
+    // A bar of its own above the page: the dsh UI has controls of its own in
+    // the top corners (a sidebar button, the stop button), and a button
+    // floating over them made those unreachable.
+    UIVisualEffectView *bar = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial]];
+    bar.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:bar];
+
+    UILabel *barTitle = [UILabel new];
+    barTitle.text = self.url.host.length > 0 ? self.url.host : @"DSH";
+    barTitle.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
+    barTitle.textColor = UIColor.secondaryLabelColor;
+    barTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    [bar.contentView addSubview:barTitle];
+
+    UIButton *closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [closeButton setTitle:@"关闭" forState:UIControlStateNormal];
+    closeButton.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     [closeButton addTarget:self action:@selector(closeTapped:) forControlEvents:UIControlEventTouchUpInside];
     closeButton.translatesAutoresizingMaskIntoConstraints = NO;
     closeButton.accessibilityLabel = @"关闭";
-    [self.view addSubview:closeButton];
+    [bar.contentView addSubview:closeButton];
 
     UILayoutGuide *safeArea = self.view.safeAreaLayoutGuide;
+    webView.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[
         [spinner.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [spinner.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
 
-        [closeButton.topAnchor constraintEqualToAnchor:safeArea.topAnchor constant:10],
-        [closeButton.trailingAnchor constraintEqualToAnchor:safeArea.trailingAnchor constant:-12],
-        [closeButton.widthAnchor constraintEqualToConstant:36],
-        [closeButton.heightAnchor constraintEqualToConstant:36],
+        [bar.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [bar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [bar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [bar.bottomAnchor constraintEqualToAnchor:safeArea.topAnchor constant:44],
+
+        [barTitle.centerXAnchor constraintEqualToAnchor:bar.contentView.centerXAnchor],
+        [barTitle.centerYAnchor constraintEqualToAnchor:bar.contentView.centerYAnchor],
+
+        [closeButton.centerYAnchor constraintEqualToAnchor:bar.contentView.centerYAnchor],
+        [closeButton.trailingAnchor constraintEqualToAnchor:bar.contentView.trailingAnchor constant:-16],
+
+        [webView.topAnchor constraintEqualToAnchor:bar.bottomAnchor],
+        [webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [webView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [webView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
     ]];
 
     [spinner startAnimating];
