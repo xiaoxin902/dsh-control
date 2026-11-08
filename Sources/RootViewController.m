@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 #import "RootViewController.h"
 
-#import <SafariServices/SafariServices.h>
-
 #import "DSHService.h"
+#import "DSHWebViewController.h"
 
-@interface RootViewController () <SFSafariViewControllerDelegate>
+@interface RootViewController ()
 
 @property (nonatomic, strong) UILabel *statusValueLabel;
 @property (nonatomic, strong) UILabel *statusDetailLabel;
@@ -19,6 +18,8 @@
 @property (nonatomic, strong) NSTimer *refreshTimer;
 @property (nonatomic, assign) BOOL running;
 @property (nonatomic, assign, getter=isBusy) BOOL busy;
+@property (nonatomic, copy, nullable) NSString *pendingCommand;
+@property (nonatomic, assign) NSTimeInterval pendingSince;
 
 @end
 
@@ -40,6 +41,10 @@
     [NSNotificationCenter.defaultCenter addObserver:self
                                           selector:@selector(applicationDidBecomeActive:)
                                               name:UIApplicationDidBecomeActiveNotification
+                                            object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self
+                                          selector:@selector(returnedFromHelper:)
+                                              name:@"DSHReturnedFromHelperNotification"
                                             object:nil];
     [self refreshStatus];
 }
@@ -83,6 +88,13 @@
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification {
     [self startRefreshTimer];
+    if (self.pendingCommand) {
+        NSDictionary *result = [DSHService helperResultNewerThan:self.pendingSince];
+        if (result) {
+            [self finishHelperCommandWithResult:result];
+            return;
+        }
+    }
     [self refreshStatus];
     [self logLayout];
 }
@@ -329,92 +341,100 @@
         return;
     }
     DSHLog(@"open: presenting %@", url.absoluteString);
-
-    SFSafariViewControllerConfiguration *configuration = [SFSafariViewControllerConfiguration new];
-    configuration.barCollapsingEnabled = YES;
-    SFSafariViewController *browser = [[SFSafariViewController alloc] initWithURL:url configuration:configuration];
-    browser.delegate = self;
-    browser.dismissButtonStyle = SFSafariViewControllerDismissButtonStyleClose;
-    browser.preferredControlTintColor = UIColor.systemBlueColor;
-    browser.modalPresentationStyle = UIModalPresentationFullScreen;
+    DSHWebViewController *browser = [[DSHWebViewController alloc] initWithURL:url];
     [self presentViewController:browser animated:YES completion:nil];
 }
 
-#pragma mark - SFSafariViewControllerDelegate
+#pragma mark - Helper app
 
-- (void)safariViewControllerDidFinish:(SFSafariViewController *)controller {
-    DSHLog(@"browser closed");
+/// The sandboxed app cannot run the launcher or signal dsh, so the work
+/// happens in the bundled helper app: open its URL, then read the answer it
+/// leaves in /tmp/dsh-helper.json.
+- (void)runHelperCommand:(NSString *)command {
+    if (self.isBusy) {
+        return;
+    }
+    [self setBusy:YES];
+
+    [DSHService removeHelperResult];
+    self.pendingCommand = command;
+    self.pendingSince = NSDate.date.timeIntervalSince1970 - 0.5;
+    NSTimeInterval since = self.pendingSince;
+
+    NSURL *url = [NSURL URLWithString:[@"dshhelper://" stringByAppendingString:command]];
+    __weak typeof(self) weakSelf = self;
+    [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL success) {
+        DSHLog(@"helper: open %@ -> %d", url.absoluteString, success);
+        if (!success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                RootViewController *strongSelf = weakSelf;
+                if (!strongSelf) {
+                    return;
+                }
+                [strongSelf finishHelperCommandWithResult:@{ @"ok": @NO,
+                                                             @"message": @"无法启动辅助应用（DSH 助手）。" }];
+            });
+        }
+    }];
+
+    dispatch_async(self.ioQueue, ^{
+        NSDictionary *result = nil;
+        for (int i = 0; i < 60; i++) {
+            result = [DSHService helperResultNewerThan:since];
+            if (result) {
+                break;
+            }
+            usleep(500 * 1000);
+        }
+        NSDictionary *finalResult = result ?: @{ @"ok": @NO, @"message": @"辅助应用没有回应（超时）。" };
+        dispatch_async(dispatch_get_main_queue(), ^{
+            RootViewController *strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+            [strongSelf finishHelperCommandWithResult:finalResult];
+        });
+    });
+}
+
+- (void)finishHelperCommandWithResult:(NSDictionary *)result {
+    if (!self.pendingCommand) {
+        [self refreshStatus];
+        return;
+    }
+    NSString *command = self.pendingCommand;
+    self.pendingCommand = nil;
+
+    BOOL ok = [result[@"ok"] boolValue];
+    NSString *message = result[@"message"];
+    DSHLog(@"helper: %@ -> ok=%d %@", command, ok, message ?: @"");
+
+    [self setBusy:NO];
+    [self refreshStatus];
+    if (!ok) {
+        [self showAlertWithTitle:[command isEqualToString:@"stop"] ? @"停止未完成" : @"启动未完成"
+                         message:message ?: @"未知错误"];
+    }
+}
+
+/// dshcontrol://helper-done — the helper handing the user back.
+- (void)returnedFromHelper:(NSNotification *)notification {
+    if (self.pendingCommand) {
+        NSDictionary *result = [DSHService helperResultNewerThan:self.pendingSince];
+        if (result) {
+            [self finishHelperCommandWithResult:result];
+            return;
+        }
+    }
+    [self refreshStatus];
 }
 
 - (void)startTapped:(UIButton *)sender {
-    if (self.isBusy) {
-        return;
-    }
-    [self setBusy:YES];
-
-    __weak typeof(self) weakSelf = self;
-    dispatch_async(self.ioQueue, ^{
-        NSString *failure = nil;
-        NSError *error = nil;
-
-        if (![DSHService isRunning]) {
-            if (![DSHService startWithError:&error]) {
-                failure = error.localizedDescription;
-            } else {
-                BOOL up = NO;
-                for (int i = 0; i < 40; i++) {
-                    if ([DSHService isRunning]) {
-                        up = YES;
-                        break;
-                    }
-                    usleep(500 * 1000);
-                }
-                if (!up) {
-                    failure = @"启动命令已经发出，但 20 秒内端口 3080 没有响应。\n可以稍后再看状态，或查看日志 /tmp/dsh-web.log。";
-                }
-            }
-        }
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            RootViewController *strongSelf = weakSelf;
-            if (!strongSelf) {
-                return;
-            }
-            [strongSelf setBusy:NO];
-            [strongSelf refreshStatus];
-            DSHLog(@"start finished, failure=%@", failure ?: @"none");
-            if (failure) {
-                [strongSelf showAlertWithTitle:@"启动未完成" message:failure];
-            }
-        });
-    });
+    [self runHelperCommand:@"start"];
 }
 
 - (void)stopTapped:(UIButton *)sender {
-    if (self.isBusy) {
-        return;
-    }
-    [self setBusy:YES];
-
-    __weak typeof(self) weakSelf = self;
-    dispatch_async(self.ioQueue, ^{
-        NSError *error = nil;
-        BOOL ok = [DSHService stopWithError:&error];
-        NSString *message = ok ? nil : error.localizedDescription;
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            RootViewController *strongSelf = weakSelf;
-            if (!strongSelf) {
-                return;
-            }
-            [strongSelf setBusy:NO];
-            [strongSelf refreshStatus];
-            DSHLog(@"stop finished, failure=%@", message ?: @"none");
-            if (message) {
-                [strongSelf showAlertWithTitle:@"停止未完成" message:message];
-            }
-        });
-    });
+    [self runHelperCommand:@"stop"];
 }
 
 - (void)showAlertWithTitle:(NSString *)title message:(NSString *)message {

@@ -21,6 +21,7 @@
 NSString *const DSHDirectoryPath = @"/var/mobile/Documents/dsh";
 NSString *const DSHLogPath = @"/tmp/dsh-web.log";
 const uint16_t DSHWebPort = 3080;
+NSString *const DSHHelperResultPath = @"/tmp/dsh-helper.json";
 
 static NSString *const DSHLauncherName = @"dsh";
 static NSString *const DSHPIDFileName = @"dsh-web.pid";
@@ -359,6 +360,39 @@ static BOOL DSHConnectSucceeds(uint16_t port, NSTimeInterval timeout) {
         return;
     }
     [[NSFileManager defaultManager] removeItemAtPath:DSHPathForFileName(DSHPIDFileName) error:NULL];
+}
+
++ (BOOL)writeHelperResult:(NSDictionary *)result command:(NSString *)command {
+    NSMutableDictionary *payload = [result mutableCopy] ?: [NSMutableDictionary dictionary];
+    payload[@"command"] = command ?: @"";
+    payload[@"date"] = @(NSDate.date.timeIntervalSince1970);
+    NSError *error = nil;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:&error];
+    if (!data) {
+        DSHLog(@"helper result: encode failed %@", error.localizedDescription);
+        return NO;
+    }
+    BOOL written = [data writeToFile:DSHHelperResultPath atomically:YES];
+    DSHLog(@"helper result: written=%d %@", written, payload);
+    return written;
+}
+
++ (NSDictionary *)helperResultNewerThan:(NSTimeInterval)timestamp {
+    NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:DSHHelperResultPath error:NULL];
+    NSDate *modified = attributes[NSFileModificationDate];
+    if (!modified || modified.timeIntervalSince1970 < timestamp) {
+        return nil;
+    }
+    NSData *data = [NSData dataWithContentsOfFile:DSHHelperResultPath];
+    if (data.length == 0) {
+        return nil;
+    }
+    id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+    return [object isKindOfClass:NSDictionary.class] ? object : nil;
+}
+
++ (void)removeHelperResult {
+    [NSFileManager.defaultManager removeItemAtPath:DSHHelperResultPath error:NULL];
 }
 
 @end

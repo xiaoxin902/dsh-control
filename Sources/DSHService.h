@@ -55,6 +55,15 @@ FOUNDATION_EXPORT void DSHLog(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 /// Deletes a pid file whose process is gone, so the next start is clean.
 + (void)removeStalePIDFile;
 
+/// Where the helper app leaves its answer for the main app.
+FOUNDATION_EXPORT NSString *const DSHHelperResultPath;
+
+/// The helper app side: reports what it did.
++ (BOOL)writeHelperResult:(NSDictionary *)result command:(NSString *)command;
+/// The main app side: the answer, only when it is newer than `timestamp`.
++ (nullable NSDictionary *)helperResultNewerThan:(NSTimeInterval)timestamp;
++ (void)removeHelperResult;
+
 @end
 
 NS_ASSUME_NONNULL_END
