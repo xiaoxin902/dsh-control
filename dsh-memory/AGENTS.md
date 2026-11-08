@@ -75,3 +75,17 @@ DeepSeek Harness 在本机（iPhone16,2 / iOS 17.2.1 / Dopamine rootless）装�
 
 `~/.dsh/docs/apelin/` 下有 13 篇文档，描述的是 **Apelin**（本机另一个 IDE 助手）的工具与工作流，从它自带的技能导出。里面的 `apelin_*`、`icli`、`irisin-cli` 等工具**在本环境不存在**，不要调用也不要假装调用；需要时把它们当背景知识读，索引见 `~/.dsh/docs/apelin/README.md`。
 
+## iOS 开发环境（可用，普通 shell 即可）
+
+Apelin 安装的 clang 工具链、iPhoneOS 17.2 SDK、substrate 头文件与链接桩、`ldid`、
+`dpkg-deb` 都能直接用，不需要 Theos：
+
+- 说明：`~/.dsh/docs/ios-build.md`（参数、打包、坑）
+- 一键脚本：`~/.dsh/bin/ios-tweak-build.sh`，示例源码 `~/.dsh/bin/example/Tweak.m`
+
+`NAME=… PKG=bc.8848.xxx FILTER=com.apple.springboard SRC=Sources OUT=build /var/mobile/.dsh/bin/ios-tweak-build.sh`
+
+你能编译、签名、打包，但**不能安装**（本环境以 mobile 运行，没有 dpkg 权限）：
+把 `.deb` 交给用户，由其包管理器安装。`TMPDIR` 指向不可写目录，打包与 `mktemp`
+都要显式给 `/tmp` 或 `$HOME/.cache`。
+
