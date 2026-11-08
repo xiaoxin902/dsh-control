@@ -22,6 +22,7 @@
 @property (nonatomic, assign, getter=isBusy) BOOL busy;
 @property (nonatomic, copy, nullable) NSString *pendingCommand;
 @property (nonatomic, assign) NSTimeInterval pendingSince;
+@property (nonatomic, assign) NSUInteger commandGeneration;
 
 @end
 
@@ -383,8 +384,16 @@
 
 #pragma mark - Helper app
 
+/// Immediate feedback the moment a command leaves the app.
+- (void)showPendingCommand:(NSString *)command {
+    BOOL stopping = [command isEqualToString:@"stop"];
+    self.statusValueLabel.text = stopping ? @"正在停止…" : @"正在启动…";
+    self.statusValueLabel.textColor = UIColor.secondaryLabelColor;
+    self.statusDetailLabel.text = @"命令已发出";
+}
+
 /// The daemon launchd starts on our request file: no window, no app switch.
-- (void)runDaemonCommand:(NSString *)command {
+- (void)runDaemonCommand:(NSString *)command generation:(NSUInteger)generation {
     [self setBusy:YES];
     NSTimeInterval since = NSDate.date.timeIntervalSince1970 - 0.5;
 
@@ -397,7 +406,7 @@
     __weak typeof(self) weakSelf = self;
     dispatch_async(self.ioQueue, ^{
         NSDictionary *result = nil;
-        for (int i = 0; i < 80; i++) {
+        for (int i = 0; i < 24; i++) {
             result = [DSHService controlResultNewerThan:since];
             if (result) {
                 break;
@@ -407,7 +416,7 @@
         NSDictionary *finalResult = result ?: @{ @"ok": @NO, @"message": @"控制守护进程没有回应（超时）。" };
         dispatch_async(dispatch_get_main_queue(), ^{
             RootViewController *strongSelf = weakSelf;
-            if (!strongSelf) {
+            if (!strongSelf || generation != strongSelf.commandGeneration) {
                 return;
             }
             [strongSelf setBusy:NO];
@@ -516,10 +525,12 @@
 /// Runs the command here when the sandbox lets an app spawn and signal
 /// processes; when it does not, the same command goes to the helper app.
 - (void)controlServiceWithCommand:(NSString *)command {
-    if (self.isBusy) {
-        return;
-    }
+    // A new tap supersedes any command still waiting for its answer, so the
+    // buttons never feel stuck behind an old one.
+    self.commandGeneration += 1;
+    NSUInteger generation = self.commandGeneration;
     [self setBusy:YES];
+    [self showPendingCommand:command];
 
     __weak typeof(self) weakSelf = self;
     dispatch_async(self.ioQueue, ^{
@@ -549,14 +560,14 @@
         BOOL blocked = !ok && (error.code == EPERM || error.code == EACCES || error.code == ENOEXEC);
         dispatch_async(dispatch_get_main_queue(), ^{
             RootViewController *strongSelf = weakSelf;
-            if (!strongSelf) {
+            if (!strongSelf || generation != strongSelf.commandGeneration) {
                 return;
             }
             [strongSelf setBusy:NO];
             if (blocked) {
                 DSHLog(@"control: %@ blocked here (%@)", command, error.localizedDescription);
                 if ([DSHService controlDaemonInstalled]) {
-                    [strongSelf runDaemonCommand:command];
+                    [strongSelf runDaemonCommand:command generation:generation];
                 } else {
                     [strongSelf runHelperCommand:command];
                 }

@@ -304,7 +304,9 @@ static NSString *const DSHPageProbeSource =
         [barTitle.centerYAnchor constraintEqualToAnchor:bar.contentView.centerYAnchor],
 
         [closeButton.centerYAnchor constraintEqualToAnchor:bar.contentView.centerYAnchor],
-        [closeButton.trailingAnchor constraintEqualToAnchor:bar.contentView.trailingAnchor constant:-16],
+        [closeButton.trailingAnchor constraintEqualToAnchor:bar.contentView.trailingAnchor constant:-12],
+        [closeButton.heightAnchor constraintEqualToConstant:44],
+        [closeButton.widthAnchor constraintGreaterThanOrEqualToConstant:64],
 
         [webView.topAnchor constraintEqualToAnchor:bar.bottomAnchor],
         [webView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
