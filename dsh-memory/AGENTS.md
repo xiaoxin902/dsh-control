@@ -97,3 +97,16 @@ Apelin 安装的 clang 工具链、iPhoneOS 17.2 SDK、substrate 头文件与链
 `Sources/Tweak.m` 用 substrate C API 写钩子，跑
 `/var/mobile/.dsh/bin/ios-tweak-build.sh` 编译打包，把 `.deb` 交给用户去装。
 
+## 导出会话
+
+用户说"导出会话/把聊天导出来"时，运行：
+
+```sh
+/var/jb/usr/local/bin/node22 /var/mobile/.dsh/bin/dsh-session-export.js
+```
+
+默认导出**最新**会话到 `/var/mobile/Documents/dsh-backup/exports/`（`latest.md`
+是最新一份），并打印文件路径。指定会话就把 id 或目录当参数传进去，
+第二个参数可改输出目录。导出内容含用户消息、助手回复、思考过程（折叠）和工具调用摘要；
+导完把路径告诉用户，让他在「文件」里长按分享。
+
