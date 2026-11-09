@@ -1,5 +1,15 @@
 # DSH 更新日志
 
+## 1.3.2（2026-11-09）
+
+- 运行环境改成可配置（`Sources/DSHConfig.m`，覆盖文件
+  `/var/mobile/Documents/dsh-ts/config.json`）：node 路径、PATH、TMPDIR 不再是写死的
+  `/var/jb/...`。越狱版不写这个文件，行为与之前完全一致。
+- 新增**巨魔（TrollStore）发行版**：`trollstore/` 目录里是独立的一套构建
+  （`-DTROLLSTORE=1` + 自己的 Info.plist / entitlements + `.tipa` 打包脚本），
+  不带守护进程，导出由 App 自己跑 node。
+  详见 `trollstore/README.md`；**未在 TrollStore 真机上验证**。
+
 ## 1.3.1（2026-11-09）
 
 - 新增「导出」按钮：把**最新** dsh 会话转成 Markdown，并弹出 iOS 系统分享面板。

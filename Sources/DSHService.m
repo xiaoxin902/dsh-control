@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #import "DSHService.h"
 
+#import "DSHConfig.h"
+
 #import "ApelinBootstrap.h"
 
 #import <errno.h>
@@ -266,10 +268,14 @@ static BOOL DSHConnectSucceeds(uint16_t port, NSTimeInterval timeout) {
     posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
     posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
 
+    // ARC: the UTF8String pointers must outlive posix_spawn, so the strings
+    // they come from are held in locals until the function returns.
+    NSString *pathEnv = [@"PATH=" stringByAppendingString:DSHConfigSearchPath()];
+    NSString *tmpEnv = [@"TMPDIR=" stringByAppendingString:DSHConfigTmpDirectory()];
     char *envp[] = {
         "HOME=/var/mobile",
-        "PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-        "TMPDIR=/var/mobile/Documents/dsh/tmp",
+        (char *)pathEnv.UTF8String,
+        (char *)tmpEnv.UTF8String,
         NULL
     };
     const char *script = launcher.fileSystemRepresentation;
@@ -430,13 +436,11 @@ static BOOL DSHConnectSucceeds(uint16_t port, NSTimeInterval timeout) {
     }
     DSHLog(@"export: script=%@", script);
 
-    NSString *node = @"/var/jb/usr/local/bin/node22";
+    NSString *node = DSHConfigNodePath();
     if (![manager isExecutableFileAtPath:node]) {
-        node = @"/usr/local/bin/node22";
-    }
-    if (![manager isExecutableFileAtPath:node]) {
+        DSHLog(@"export: node missing, configured %@", node);
         if (error) {
-            *error = DSHMakeError(ENOENT, @"找不到 node22（/var/jb/usr/local/bin/node22）");
+            *error = DSHMakeError(ENOENT, @"找不到 node22，请在 dsh-ts/config.json 里写 nodePath");
         }
         return nil;
     }
