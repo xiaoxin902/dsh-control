@@ -52,6 +52,19 @@ done
 
 lipo -create "${LINKED[@]}" -output "$APP/DSHControl"
 cp "$ROOT/trollstore/Info.plist" "$APP/Info.plist"
+
+# 可选：把 node22 一起塞进包内（TrollStore 安装时随 App 一起签名，
+# 绕开"用户目录里 ldid 临时签名的二进制能否 exec"的不确定）。
+# node22 约 100 MB，tipa 会因此变大。
+if [ -n "${NODE_BINARY:-}" ]; then
+  [ -x "$NODE_BINARY" ] || { echo "NODE_BINARY 不可执行: $NODE_BINARY" >&2; exit 1; }
+  mkdir -p "$APP/bin"
+  cp "$NODE_BINARY" "$APP/bin/node22"
+  chmod +x "$APP/bin/node22"
+  ldid "$APP/bin/node22" 2>/dev/null || true
+  echo "已放入包内 node22: $(du -h "$APP/bin/node22" | cut -f1)"
+fi
+
 ldid -S"$ROOT/trollstore/entitlements.plist" "$APP/DSHControl"
 
 (cd "$OUT" && zip -qry DSHControl.tipa Payload)

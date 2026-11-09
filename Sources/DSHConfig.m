@@ -35,8 +35,14 @@ NSDictionary<NSString *, NSString *> *DSHConfigValues(void) {
 }
 
 NSString *DSHConfigNodePath(void) {
-    NSString *configured = DSHConfigValues()[@"nodePath"];
     NSFileManager *manager = NSFileManager.defaultManager;
+    // 巨魔版可以把 node22 放进 .app 包内（TrollStore 安装时一起签名），
+    // 这条优先于任何配置：包内的是跟着 App 一起来的。
+    NSString *bundled = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"bin/node22"];
+    if ([manager isExecutableFileAtPath:bundled]) {
+        return bundled;
+    }
+    NSString *configured = DSHConfigValues()[@"nodePath"];
     if ([manager isExecutableFileAtPath:configured]) {
         return configured;
     }

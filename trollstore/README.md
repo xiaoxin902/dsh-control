@@ -53,15 +53,32 @@ App 不会去猜这些，找不到就报错并在 `/tmp/dsh-control.log` 记一�
 ```sh
 SDKROOT=/path/to/iPhoneOS.sdk ./trollstore/build-tipa.sh build
 # → build/DSHControl.tipa
+
+# 想把 node22 一起打进包里（推荐先试这个）：
+SDKROOT=/path/to/iPhoneOS.sdk NODE_BINARY=/path/to/node22 ./trollstore/build-tipa.sh build
 ```
 
 需要：clang（命令行工具链）、iPhoneOS SDK、`ldid`、`lipo`、`zip`。
 SDK 不能随仓库分发，自己准备。
 
+### 把 node22 放进包内
+
+`NODE_BINARY=…` 会把 `node22` 复制到 `DSHControl.app/bin/node22` 并用 `ldid` 签名，
+App 启动子进程时**优先**用包内这份（`DSHConfigNodePath()` 的第一选择）。
+
+为什么这么做：从 rootless 包解出来的 `node22` 只有 ldid 临时签名，
+放在用户目录里被 App `exec` 时，TrollStore 设备上的 AMFI 是否放行是未知的；
+打进 App 包内，安装时随 App 一起被 TrollStore 签名，成功率更高。
+
+代价：实测 node22 约 **97 MB**，`.tipa` 压缩后约 **32 MB**。
+
+注意授权：Node.js 本体是 MIT，但这份二进制来自第三方（Procursus）的 iOS 打包，
+分发前把它的 LICENSE / 版权声明一起放进去。
+
 ## 安装
 
 1. TrollStore → 右上角 + → 选 `DSHControl.tipa`（**.tipa 而不是 .ipa**，TrollStore 会读包里的 entitlements）
-2. 装完打开，先确认 `dshDir` / `nodePath` 配对了
+2. 装完打开，先确认 `dshDir` / `nodePath` 配对了；包内带 node 时不用配 `nodePath`
 
 ## 已知限制 / 没验证的部分
 
