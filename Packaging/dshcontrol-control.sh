@@ -155,6 +155,25 @@ stop)
 		MSG=not-running
 	fi
 	;;
+export)
+	SCRIPT=/var/jb/usr/libexec/dsh-session-export.js
+	[ -f "$SCRIPT" ] || SCRIPT=/var/mobile/.dsh/bin/dsh-session-export.js
+	if [ -f "$SCRIPT" ]; then
+		HOME=/var/mobile TMPDIR=/tmp PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/usr/bin:/bin \
+			"$NODE" --jitless "$SCRIPT" >>/tmp/dsh-daemon.log 2>&1
+		RC=$?
+	else
+		RC=127
+	fi
+	if [ "$RC" = 0 ] && [ -s /var/mobile/Documents/dsh-backup/exports/latest.md ]; then
+		OK=true
+		MSG=exported
+	else
+		OK=false
+		MSG=export-failed
+		trace "export rc=$RC script=$SCRIPT"
+	fi
+	;;
 esac
 
 printf '{"ok":%s,"message":"%s","command":"%s"}\n' "$OK" "$MSG" "$CMD" >"$RES"

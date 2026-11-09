@@ -15,6 +15,7 @@
 @property (nonatomic, strong) UIButton *openButton;
 @property (nonatomic, strong) UIButton *startButton;
 @property (nonatomic, strong) UIButton *stopButton;
+@property (nonatomic, strong) UIButton *exportButton;
 
 @property (nonatomic, strong) dispatch_queue_t ioQueue;
 @property (nonatomic, strong) NSTimer *refreshTimer;
@@ -197,8 +198,11 @@
     // Start / stop
     self.startButton = [self auxiliaryButtonWithTitle:@"启动" action:@selector(startTapped:)];
     self.stopButton = [self auxiliaryButtonWithTitle:@"停止" action:@selector(stopTapped:)];
+    self.exportButton = [self auxiliaryButtonWithTitle:@"导出" action:@selector(exportTapped:)];
 
-    UIStackView *auxRow = [[UIStackView alloc] initWithArrangedSubviews:@[ self.startButton, self.stopButton ]];
+    UIStackView *auxRow = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.startButton, self.stopButton, self.exportButton
+    ]];
     auxRow.axis = UILayoutConstraintAxisHorizontal;
     auxRow.distribution = UIStackViewDistributionFillEqually;
     auxRow.spacing = 12;
@@ -561,6 +565,72 @@
 
 - (void)stopTapped:(UIButton *)sender {
     [self controlServiceWithCommand:@"stop"];
+}
+
+/// Exports the newest dsh session to Markdown and opens the system share
+/// sheet for it. The app's sandbox cannot see ~/.dsh, so the export itself
+/// runs in our launchd daemon (which also knows how to run node22); the app
+/// only reads the Markdown it leaves in Documents and shares it.
+- (void)exportTapped:(UIButton *)sender {
+    if (self.exportButton.enabled == NO) {
+        return;
+    }
+    self.exportButton.enabled = NO;
+    self.exportButton.alpha = 0.5;
+
+    NSTimeInterval stamp = NSDate.date.timeIntervalSince1970;
+    if (![DSHService requestControlCommand:@"export"]) {
+        self.exportButton.enabled = YES;
+        self.exportButton.alpha = 1.0;
+        [self showAlertWithTitle:@"导出失败" message:@"无法写入请求文件：控制守护进程没有装好。"];
+        return;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(self.ioQueue, ^{
+        NSDictionary *result = nil;
+        for (int i = 0; i < 60; i++) {
+            result = [DSHService controlResultNewerThan:stamp];
+            if (result) {
+                break;
+            }
+            usleep(500 * 1000);
+        }
+        [DSHService removeControlRequest];
+
+        BOOL ok = [result[@"ok"] boolValue];
+        NSString *path = @"/var/mobile/Documents/dsh-backup/exports/latest.md";
+        BOOL exists = [NSFileManager.defaultManager fileExistsAtPath:path];
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            RootViewController *strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+            strongSelf.exportButton.enabled = YES;
+            strongSelf.exportButton.alpha = 1.0;
+            if (!ok || !exists) {
+                NSString *why = result ? [result[@"message"] description] : @"控制守护进程没有回应";
+                DSHLog(@"export failed: %@", why);
+                [strongSelf showAlertWithTitle:@"导出失败" message:why];
+                return;
+            }
+            DSHLog(@"export ok: %@", path);
+            [strongSelf presentShareSheetForPath:path];
+        });
+    });
+}
+
+- (void)presentShareSheetForPath:(NSString *)path {
+    NSURL *url = [NSURL fileURLWithPath:path];
+    UIActivityViewController *controller =
+        [[UIActivityViewController alloc] initWithActivityItems:@[ url ] applicationActivities:nil];
+    UIPopoverPresentationController *popover = controller.popoverPresentationController;
+    if (popover) {
+        popover.sourceView = self.exportButton;
+        popover.sourceRect = self.exportButton.bounds;
+    }
+    [self presentViewController:controller animated:YES completion:nil];
 }
 
 /// Runs the command here when the sandbox lets an app spawn and signal

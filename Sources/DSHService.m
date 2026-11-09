@@ -396,6 +396,101 @@ static BOOL DSHConnectSucceeds(uint16_t port, NSTimeInterval timeout) {
     [[NSFileManager defaultManager] removeItemAtPath:DSHPathForFileName(DSHPIDFileName) error:NULL];
 }
 
++ (NSString *)exportLatestSessionWithError:(NSError **)error {
+    NSFileManager *manager = NSFileManager.defaultManager;
+    // The app is sandboxed for its own container plus the user's Documents
+    // folder: ~/.dsh (a dot directory directly under /var/mobile) is
+    // invisible to it, so the bootstrap copy the package installs is the one
+    // that matters. The others are fallbacks for hand-made installs.
+    NSString *bootstrapCopy = ApelinBootstrapPath(@"/usr/libexec/dsh-session-export.js");
+    NSArray<NSString *> *candidates = @[
+        bootstrapCopy ?: @"/usr/libexec/dsh-session-export.js",
+        @"/var/mobile/Documents/dsh/bin/dsh-session-export.js",
+        @"/var/mobile/.dsh/bin/dsh-session-export.js",
+    ];
+    NSString *script = nil;
+    for (NSString *candidate in candidates) {
+        if ([manager fileExistsAtPath:candidate]) {
+            script = candidate;
+            break;
+        }
+    }
+    if (script.length == 0) {
+        NSString *bundled = [NSBundle.mainBundle pathForResource:@"dsh-session-export" ofType:@"js"];
+        if (bundled.length > 0) {
+            script = bundled;
+        }
+    }
+    if (script.length == 0) {
+        DSHLog(@"export: script missing, tried %@", candidates);
+        if (error) {
+            *error = DSHMakeError(ENOENT, @"找不到导出脚本 dsh-session-export.js（重装本包即可修复）");
+        }
+        return nil;
+    }
+    DSHLog(@"export: script=%@", script);
+
+    NSString *node = @"/var/jb/usr/local/bin/node22";
+    if (![manager isExecutableFileAtPath:node]) {
+        node = @"/usr/local/bin/node22";
+    }
+    if (![manager isExecutableFileAtPath:node]) {
+        if (error) {
+            *error = DSHMakeError(ENOENT, @"找不到 node22（/var/jb/usr/local/bin/node22）");
+        }
+        return nil;
+    }
+
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+
+    char *envp[] = {
+        "HOME=/var/mobile",
+        "PATH=/var/jb/usr/local/bin:/var/jb/usr/bin:/usr/bin:/bin",
+        "TMPDIR=/tmp",
+        NULL
+    };
+    const char *nodePath = node.fileSystemRepresentation;
+    const char *scriptPath = script.fileSystemRepresentation;
+    char *argv[] = { (char *)nodePath, "--jitless", (char *)scriptPath, NULL };
+
+    pid_t pid = 0;
+    int result = posix_spawn(&pid, nodePath, &actions, NULL, argv, envp);
+    posix_spawn_file_actions_destroy(&actions);
+    if (result != 0) {
+        DSHLog(@"export: spawn -> %s", strerror(result));
+        if (error) {
+            *error = DSHMakeError(result, @"无法运行导出脚本");
+        }
+        return nil;
+    }
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        if (error) {
+            *error = DSHMakeError(errno, @"导出脚本没有正常结束");
+        }
+        return nil;
+    }
+    BOOL ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    DSHLog(@"export: exit=%d status=%d", ok, status);
+
+    NSString *exportPath = @"/var/mobile/Documents/dsh-backup/exports/latest.md";
+    NSDictionary *attributes = [manager attributesOfItemAtPath:exportPath error:NULL];
+    if (!attributes || [attributes fileSize] == 0) {
+        if (error) {
+            *error = DSHMakeError(ok ? ENOENT : EIO,
+                                  @"导出没有产出文件，请确认 dsh 会话目录存在");
+        }
+        return nil;
+    }
+    return exportPath;
+}
+
+
 + (void)runCapabilitySelfCheck {
     NSFileManager *manager = NSFileManager.defaultManager;
     NSString *shell = ApelinBootstrapPath(@"/bin/sh");
